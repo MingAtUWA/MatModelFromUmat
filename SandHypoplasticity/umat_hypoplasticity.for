@@ -15,8 +15,29 @@
 ! Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301,
 !  USA.
 
+c -------------------------------------------------------------------------
+      subroutine sdvini(statev, coords, nstatv, ncrds,
+     & noel, npt, layer, kspt)
+      
+      implicit none
+      
+      integer nstatv, ncrds, noel, npt, layer, kspt
+      double precision statev(nstatv), coords(ncrds)
+      
+      integer intv(10)
+      double precision realv(10)
+      character*8 charv(10)
+      
+c      intv(1) = npt
+c      call STDB_ABQERR(1, 'init sdv.%I', intv,realv, charv)
+
+      statev(13) = 0.05     
+      
+      return
+      endsubroutine
+      
 c------------------------------------------------------------------------------
-      subroutine umat_hypoplasticity(stress,statev,ddsdde,sse,spd,scd,
+      subroutine umat(stress,statev,ddsdde,sse,spd,scd,
      &  rpl,ddsddt,drplde,drpldt,
      &  stran,dstran,time,dtime,temp,dtemp,predef,dpred,cmname,
      &  ndi,nshr,ntens,nstatv,props,nprops,coords,drot,pnewdt,
@@ -28,11 +49,14 @@ c
 c	Author: D. Masin, based on RKF23 implementation by C. Tamagnini
 c
 c----------------------------------------------------------------------------
+
       implicit none
-c
+
       character*80 cmname
+
       integer ntens, ndi, nshr, nstatv, nprops, noel, npt,
      & layer, kspt, kstep, kinc, inittension
+
       double precision stress(ntens), statev(nstatv),
      & ddsdde(ntens,ntens), ddsddt(ntens), drplde(ntens),
      & stran(ntens), dstran(ntens), time(2), predef(1), dpred(1),
@@ -57,8 +81,9 @@ c ... declaration of local variables
       logical prsw,elprsw
       integer i,error,maxnint,nfev,testnan,maxninttest
       integer nparms,nasvdim,nfasv,nydim,nasv,nyact,testing
-
+c
       double precision dot_vect_h
+c       
       double precision parms(nprops),theta,tolintT,dtsub,DTmin,perturb
       double precision sig_n(6),sig_np1(6),DDtan(6,6),pore
       double precision deps_np1(6),depsv_np1,norm_deps,tolintTtest
@@ -82,6 +107,10 @@ c ... additional state variables
 
 c ... solution vector (stresses, additional state variables)
       double precision y(nydim),y_n(nydim),dy(nydim)
+
+	integer intv(10)
+      double precision realv(10)
+      character*8 charv(10)
 
 c ... Error Management:
 c     error =  0 ... no problem in time integration
@@ -180,9 +209,16 @@ c ... Time integration
       call push_h(y,y_n,nydim)
 
 c ... check whether the initial state is not tensile
-      inittension=0
+      inittension = 0
       call check_RKF_h(inittension,y,nyact,nasv,parms,nparms)
 
+c output whether is tension
+c      if (npt == 1) then
+c          intv(1) = inittension
+c          call STDB_ABQERR(1, 'inittension %I', intv, realv, charv)
+c      endif
+
+      
       if (elprsw) then
         write(6,*) '==================================================='
         write(6,*) 'Call of umat:'
@@ -202,20 +238,21 @@ c ... local integration using adaptive RKF23 method, consistent Jacobian and err
 c     if testing==1 PLAXIS is testing for the initial strain increment.
       testing=0
 c     For use in ABAQUS, comment out the following line
-      if(kstep.eq.1 .AND. kinc.eq.1) testing=1
-      if(norm_D.eq.0) testing=2
+      !if (kstep.eq.1 .AND. kinc.eq.1) testing=1
+      if (norm_D.eq.0) testing=2
 c     FEM asking for ddsdde only
 
       nfev = 0 ! initialisation
 
-      if(inittension.eq.0) then
-
-      if(testing .eq. 1) then
+      if (inittension.eq.0) then
+      
+      if (testing .eq. 1) then
       
           call rkf23_update_h(y,nyact,nasv,dtsub,tolintTtest,
      &                      maxninttest,DTmin,
      &                      deps_np1,parms,nparms,nfev,elprsw,
      &                      dtime,error)
+     
 c ... give original state if the model fails without substepping
           if(error .eq. 3) then
             do i=1,nyact        
@@ -226,6 +263,7 @@ c ... give original state if the model fails without substepping
           
       else if(testing.eq.2) then
       
+c no need to update stress, for ddsdde only
             do i=1,nyact        
                   y(i)=y_n(i)
             end do
@@ -233,28 +271,41 @@ c ... give original state if the model fails without substepping
       else   !inittension.eq.0 .and. testing.eq.0
 c ... Normal RKF23 integration
 c ... The main integration is here!!!!!
-          call rkf23_update_h(y,nyact, nasv, dtsub, tolintT,
-     &                        maxnint, DTmin,
-     &                        deps_np1, parms, nparms, nfev,
-     &                        elprsw, dtime, error)
+          call rkf23_update_h(y,nyact,nasv,dtsub,tolintT,
+     &                        maxnint,DTmin,
+     &                        deps_np1,parms,nparms,nfev,
+     &                        elprsw,dtime,error)
      
+c          if (npt == 1) then
+c              intv(1) = kinc
+c              realv(1) = y(3)
+c              call STDB_ABQERR(1, 'rkf 32, inc %I, stress %R',
+c     &                 intv, realv, charv)
+c          endif
+      
       endif
 
       if (error.eq.3) then
       
-           write(6,*) 'subroutine UMAT: reduce step size in ABAQUS'
+           if (noel == 1 .and. npt == 1) then
+              call STDB_ABQERR(1, 'UMAT: step size too large.',
+     &                    intv, realv, charv)
+           endif
+
            call wrista_h(1,y,nydim,deps_np1,dtime,
      &                coords,statev,nstatv,
      &                parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
+     
 c          call xit_h
 c          return
-c ...      do not do anything, we are the most likely close to the tensile region
+c          keep stress the same
+c          we are likely close to tensile region
            do i=1,nyact        
-                  y(i)=y_n(i)
+              y(i)=y_n(i)
            end do
 
-      else if (error.eq.10) then
-      
+      elseif (error.eq.10) then
+
            call wrista_h(2,y,nydim,deps_np1,dtime,
      &                coords,statev,nstatv,
      &                parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
@@ -279,7 +330,7 @@ c     we were initilly in the tensile stress, calc elastic
       endif ! end inittension
 
 c ... update dtsub and nfev
-      if (dtsub .le. 0.0d0) then 
+      if(dtsub .le. 0.0d0) then 
       	dtsub = 0.0d0
       else if(dtsub .ge. dtime) then 
       	dtsub = dtime
@@ -313,6 +364,17 @@ c ... update statev variables
       end if
 
 c     End of time integration
+
+c      if (npt == 1) then
+c          realv(1) = stress(3)
+c          realv(2) = stran(3)
+c          realv(3) = dstran(3)
+c          intv(1) = kinc
+c          call STDB_ABQERR(1, 'inc %I, stress %R, strain %R,
+c     &            dstrain %R',
+c     &                 intv, realv, charv)
+c      endif
+
       return
       end
 
@@ -705,10 +767,12 @@ c     fb
       temp1 = three + a*a - a * sq3 * ((ei0-ed0)/(ec0-ed0))**alpha
       if(temp1 .lt. zero) stop 'factor fb not defined'
       fb = hs/en/temp1*(one+ei)/ei*(ei0/ec0)**beta*(-I1/hs)**(one-en)
-       
+      !fb = hs/en/temp1*(one+ei)/ei*(-I1/hs)**(one-en)
+      
 c     fe
       fe = (ec/void)**beta
-         	
+      !fe = (ei/void)**beta
+      
       fs=fb*fe
 
 c     fd
@@ -730,7 +794,7 @@ c ... tensor NN
       do i = 1, 6
          NN(i) = FF * a * (eta(i)+eta_dev(i)) / eta_n2
       enddo
-        
+      
 c ... BEGIN intergranular STRAIN
       if(istrain .eq. 1) then
 
@@ -1123,7 +1187,7 @@ c-----------------------------------------------------------------------------
       double precision deps(6),dstran(ntens),depsv
 c
       do i=1,ntens
-                deps(i) = dstran(i)
+          deps(i) = dstran(i)
       enddo
 c
         depsv=deps(1)+deps(2)+deps(3)
@@ -1365,6 +1429,7 @@ c ... recover current state variables (sig,q)
       
 c ... build F_sig(6) and F_q(nasv) vectors and move them into kRK
       call get_F_sig_q_h(sig,q,nasv,parms,nparms,deps,F_sig,F_q,error)
+      
       if(error .eq. 10) return
 
       do i = 1, 6
@@ -1534,7 +1599,7 @@ c ... check for minimum step size
               error = 3
               return
           endif          
-c                                       
+
           endif
       
 c ... bottom of while loop
@@ -1548,20 +1613,19 @@ c ... recover final state
       return
       end
 
-c-----------------------------------------------------------------------------
+c Checks if RKF23 solout vector y is OK for hypoplasticity
       subroutine check_RKF_h(error_RKF, y, ny, nasv, parms, nparms)
-c-----------------------------------------------------------------------------
-c Checks is RKF23 solout vector y is OK for hypoplasticity
-c-----------------------------------------------------------------------------
       implicit none
-c
       integer error_RKF,ny,nasv,i,nparms,testnan,iopt
-c
       double precision y(ny),parms(nparms)
       double precision sig(6),pmean,sig_star(6)
       double precision xN1(3),xN2(3),xN3(3),S(3),P,Q,tmin
       double precision p_t,minstress
-c
+
+      integer intv(10)
+      double precision realv(10)
+      character*8 charv(10)
+      
 	minstress = 0.9
       p_t = parms(2)
       do i=1,6
@@ -1582,12 +1646,12 @@ c     check for positive mean stress
       end if
 
 c     calculate minimum principal stress
-      iopt=0
+      iopt = 0
       Call PrnSig_h(iopt, sig_star, xN1, xN2, xN3,
      &              S(1),S(2),S(3), P, Q)
       tmin = 1.0d+20
       do i = 1, 3
-          if(tmin .ge. -S(i)) then
+          if (tmin >= -S(i)) then
               tmin = -S(i)
           endif	 
       enddo 
@@ -1597,6 +1661,10 @@ c     check for tension
           error_RKF = 1
       end if
       
+c      intv(1) = error_RKF
+c      call STDB_ABQERR(1, 'err_rkf(tensile)1: %I',
+c     &            intv, realv, charv)
+
 c     check for NAN
       testnan = 0
       do i = 1, ny
@@ -1604,6 +1672,10 @@ c     check for NAN
       end do
 
       if(testnan.eq.1) error_RKF = 1
+      
+c      intv(1) = error_RKF
+c      call STDB_ABQERR(1, 'err_rkf(tensile)2: %I',
+c     &            intv, realv, charv)
       
       return
       end
@@ -1658,6 +1730,7 @@ c consistent tangent stiffness
       
       return
       end
+
 
 c-----------------------------------------------------------------------------
       subroutine wrista_h(mode,y,nydim,deps_np1,dtime,coords,statev,
@@ -1832,35 +1905,26 @@ c ... cal normalized length of intergranular strain rho (statev 12)
           statev(12) = norm_del / parms(12)
      
       else
-      
           statev(12) = 0.0
-          
       endif
 
       return
       end        
 
-c-----------------------------------------------------------------------------
-      subroutine umatisnan_h(chcknum,testnan)
-c-----------------------------------------------------------------------------
-c
-c  checks whether number is NaN
-c
-c-----------------------------------------------------------------------------
+c *** checks whether number is NaN ***
+      subroutine umatisnan_h(chcknum, testnan)
       double precision chcknum
       integer testnan
-
 	if (.not.(chcknum .ge. 0. .OR. chcknum .lt. 0.)) testnan = 1        
 	if (chcknum .gt. 1.d30) testnan = 1        
 	if (chcknum .lt. -1.d30) testnan = 1        
- 	if (chcknum .ne. chcknum) testnan = 1        
-      
+ 	if (chcknum .ne. chcknum) testnan = 1
+      !debug
+      testnan = 0
       return
       end         
       
-c-----------------------------------------------------------------------------
       subroutine xit_h
-c-----------------------------------------------------------------------------
       stop
       return
       end
