@@ -4,6 +4,8 @@ project(MatModelFromUmat)
 
 enable_language(Fortran)
 
+add_subdirectory(FortranUtils/)
+
 # umats and their wrapper in Fortran
 add_subdirectory(SandHypoplasticity/)
 add_subdirectory(SandHypoplasticityCavitation/)

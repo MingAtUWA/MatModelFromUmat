@@ -46,7 +46,8 @@ c      call STDB_ABQERR(1, 'init sdv.%I', intv,realv, charv)
       endsubroutine
 
 c umat with cavitation
-      subroutine umat(stress,statev,ddsdde,sse,spd,scd,
+      subroutine umat_hypoplasticity_cavitation(stress,statev,ddsdde,
+     &  sse,spd,scd,
      &  rpl,ddsddt,drplde,drpldt,
      &  stran,dstran,time,dtime,temp,dtemp,predef,dpred,cmname,
      &  ndi,nshr,ntens,nstatv,props,nprops,coords,drot,pnewdt,

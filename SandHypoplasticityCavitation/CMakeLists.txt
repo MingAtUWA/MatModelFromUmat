@@ -8,3 +8,8 @@ add_library(
     sand_hypoplasticity_cavitation_integration.f90
     umat_hypoplasticity_cavitation.for
     )
+
+target_link_libraries(
+    SandHypoplasticityCavitation PUBLIC
+    FortranUtils
+    )

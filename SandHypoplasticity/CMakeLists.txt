@@ -8,3 +8,8 @@ add_library(
     sand_hypoplasticity_integration.f90
     umat_hypoplasticity.for
     )
+
+target_link_libraries(
+    SandHypoplasticity PUBLIC
+    FortranUtils
+    )
