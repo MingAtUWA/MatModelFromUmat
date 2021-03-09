@@ -6,6 +6,7 @@
 add_executable(Tests
     Tests_main.h Tests_main.cpp
     test_sand_hypoplasticity.cpp
+    test_input_from_MPM.cpp
     )
 
 target_include_directories(

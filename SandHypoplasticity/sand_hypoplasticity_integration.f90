@@ -28,7 +28,7 @@ subroutine sand_hypoplasticity_integration(stress, ddsdde, statev, dstran, props
     real(8), intent(in)::props(nprops)
     
     !cmname: user-defined material name
-    character(len=80)::cmname = 'SandHypoplasticity'
+    character*80::cmname = 'SandHypoplasticity'
     ! strain
     real(8)::stran(ntens)
     data stran /0.0, 0.0, 0.0, 0.0, 0.0, 0.0/
@@ -83,8 +83,6 @@ subroutine sand_hypoplasticity_integration(stress, ddsdde, statev, dstran, props
     integer::kstep = 0
     ! kinc: increment number
     integer::kinc = 0
-    
-    statev(13) = dtime
     
     call umat_hypoplasticity(stress, statev, ddsdde,    &
             sse, spd, scd, rpl, ddsddt, drplde, drpldt, &

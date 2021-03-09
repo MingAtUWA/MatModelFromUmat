@@ -6,7 +6,7 @@
 add_library(
     SandHypoplasticity SHARED
     sand_hypoplasticity_integration.f90
-    umat_hypoplasticity.for
+    umat_hypoplasticity.f90
     )
 
 target_link_libraries(
