@@ -1,6 +1,4 @@
-! Author: D. Masin, based on RKF23 implementation by C. Tamagnini
-! Copyright (C)  2009  C. Tamagnini, E. Sellari, D. Masin, P.A. von Wolffersdorff
-
+! Based on RKF23 implementation by D. Masin
 subroutine umat_hypoplasticity(stress,statev,ddsdde,sse,spd,scd, &
     rpl,ddsddt,drplde,drpldt, &
     stran,dstran,time,dtime,temp,dtemp,predef,dpred,cmname, &
@@ -56,7 +54,7 @@ subroutine umat_hypoplasticity(stress,statev,ddsdde,sse,spd,scd, &
     real(8)::asv(nasvdim)
 
     ! stresses, additional state variables
-    real(8)::y(nydim),y_n(nydim),dy(nydim)
+    real(8)::y(nydim), y_n(nydim), dy(nydim)
     
     ! error:
     ! 0 no problem in time integration
@@ -66,7 +64,7 @@ subroutine umat_hypoplasticity(stress,statev,ddsdde,sse,spd,scd, &
     error = 0
 
     ! check material parameters and move them to array parms(nparms)
-    call check_parms_h(props,nprops,parms,nparms,error)
+    call check_parms_h(props, nprops, parms, nparms, error)
 
     ! print informations about time integration, useful when problems occur for debug purpose
     elprsw = .false.
@@ -115,28 +113,23 @@ subroutine umat_hypoplasticity(stress,statev,ddsdde,sse,spd,scd, &
       
         if(norm_D == 0.0) then
             ! no stress update
-            do i = 1, nyact        
+            do i = 1, nyact
                 y(i) = y_n(i)
             enddo
         else ! testing == 0
             ! normal RKF23 integration, main integration
             ! error here
-            !write(*, ) stress
             call rkf23_update_h(y, nyact, nasv, dtsub, tolintT, maxnint, &
                 DTmin, deps_np1, parms, nparms, nfev, elprsw, dtime, error)
             ! check integration error
-            if (error == 3) then ! step size too large
-                call wrista_h(1, y, nydim, deps_np1, dtime, coords, statev, &
-                    nstatv, parms, nparms, noel, npt, ndi, nshr, kstep, kinc)
-                ! may be close to tensile state, no update in stress
+            if (error == 3) then ! may be close to tensile state
+                !call wrista_h(1, y, nydim, deps_np1, dtime, coords, statev, &
+                !    nstatv, parms, nparms, noel, npt, ndi, nshr, kstep, kinc)
                 do i = 1, nyact        
                     y(i) = y_n(i)
                 enddo
             elseif (error == 10) then ! fatal error
-            !    call wrista_h(2,y,nydim,deps_np1,dtime,
-            !&                coords,statev,nstatv,
-            !&                parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
-            !    call xit_h
+                return
             endif
         endif
         
@@ -185,8 +178,8 @@ subroutine umat_hypoplasticity(stress,statev,ddsdde,sse,spd,scd, &
     return
 endsubroutine umat_hypoplasticity 
 
-! checks input material parameters 
-subroutine check_parms_h(props,nprops,parms,nparms,error)
+! copy props(nprops) to parms(nparms)
+subroutine check_parms_h(props, nprops, parms, nparms, error)
     implicit none
     integer::nprops,nparms,i,error
     real(8)::props(nprops),parms(nprops)
@@ -202,6 +195,7 @@ subroutine check_parms_h(props,nprops,parms,nparms,error)
     phi_deg = parms(1)
     phi = phi_deg * 3.14159265358979323846 / 180.0
     parms(1) = phi
+    p_t = parms(2)
     hs = parms(3)
     en = parms(4)
     ed0 = parms(5)
@@ -215,39 +209,9 @@ subroutine check_parms_h(props,nprops,parms,nparms,error)
     beta_r = parms(13)
     chi = parms(14)
     bulk_w = parms(15)        
-    p_t = parms(2)
     
     return
 endsubroutine
-
-! dot product of a 2nd order tensor, stored in Voigt notation
-real(8) function dot_vect_h(flag, a, b, n)
-! flag meaning:
-!   1 -> vectors are stresses in Voigt notation
-!   2 -> vectors are strains in Voigt notation
-!   3 -> ordinary dot product between R^n vectors
-    implicit none
-    integer::i, n, flag
-    real(8)::a(n), b(n), coeff
-
-    if (flag == 1) then ! stress tensor
-        coeff = 2.0
-    elseif(flag==2) then ! strain tensor
-        coeff = 0.5
-    else ! standard vectors
-        coeff = 1.0
-    endif
-      
-    dot_vect_h = 0.0
-    do i = 1, n
-        if(i <= 3) then
-            dot_vect_h = dot_vect_h + a(i) * b(i)
-        else
-            dot_vect_h = dot_vect_h + coeff * a(i) * b(i)
-        endif
-    enddo
-    return
-endfunction
 
 ! finds vectors F_sigma and F_q in F(y)
 subroutine get_F_sig_q_h(sig, q, nasv, parms, nparms, deps, F_sig, F_q, error)
@@ -265,22 +229,24 @@ subroutine get_F_sig_q_h(sig, q, nasv, parms, nparms, deps, F_sig, F_q, error)
         istrain = 1
     endif
 
-    call get_tan_h(deps,sig,q,nasv,parms,nparms,MM, HH,LL,NN,istrain,error)
+    call get_tan_h(deps, sig, q, nasv, parms, nparms, &
+            MM, HH, LL, NN, istrain, error)
 
-    ! compute F_sig=MM*deps
+    ! compute F_sig = MM * deps
     if (istrain == 1) then
-        call matmul_h(MM,deps,F_sig,6,6,1)
+        call matmul_h(MM, deps, F_sig, 6, 6, 1)
     else 
-        call matmul_h(LL,deps,F_sig,6,6,1)
-		norm_D2 = dot_vect_h(2,deps,deps,6)
+        call matmul_h(LL, deps, F_sig, 6, 6, 1)
+		norm_D2 = dot_vect_h(2, deps, deps, 6)
 		norm_D = dsqrt(norm_D2)
         do ii = 1, 6
-            F_sig(ii)=F_sig(ii)+NN(ii)*norm_D
+            F_sig(ii) = F_sig(ii) + NN(ii) * norm_D
         enddo
     endif
 
-    ! compute F_q=HH*deps
-    call matmul_h(HH,deps,F_q,nasv,6,1)   
+    ! compute F_q = HH * deps
+    call matmul_h(HH, deps, F_q, nasv, 6, 1)
+    
     return
 endsubroutine
 
@@ -391,7 +357,7 @@ subroutine get_tan_h(deps, sig, q, nasv, parms, nparms, &
     norm_del2 = dot_vect_h(2,del,del,6)
     norm_deps = dsqrt(norm_deps2)
     norm_del = dsqrt(norm_del2)
-
+    
     if (norm_del >= tiny) then
         do i=1,6
             eta_del(i) = del(i) / norm_del
@@ -405,7 +371,7 @@ subroutine get_tan_h(deps, sig, q, nasv, parms, nparms, &
     eta_delta(5) = 0.5 * eta_del(5)
     eta_delta(6) = 0.5 * eta_del(6)
 
-    if(norm_deps >= tiny) then
+    if (norm_deps >= tiny) then
         do i = 1, 6
             eta_eps(i) = deps(i) / norm_deps
         enddo
@@ -574,11 +540,10 @@ subroutine get_tan_h(deps, sig, q, nasv, parms, nparms, &
             endif
         enddo
         
-    ! end istrain/noistrain switch        
-    endif
+    endif ! end istrain/noistrain switch   
 
     do i = 1, 6
-        do j=1,6
+        do j = 1, 6
             LL(i,j) = LL(i,j) * fs
         enddo
         NN(i) = NN(i) * fs * fd
@@ -651,7 +616,7 @@ subroutine inv_eps_h(eps, eps_v, eps_s, sin3t)
 endsubroutine
 
 ! calculate invariants of stress tensor
-subroutine inv_sig_h(sig,pp,qq,cos3t,I1,I2,I3)
+subroutine inv_sig_h(sig, pp, qq, cos3t, I1, I2, I3)
 ! NOTE: Voigt notation is used with the following index conversion
 ! 11 -> 1, 22 -> 2, 33 -> 3, 12 -> 4, 13 -> 5, 23 -> 6
     implicit none
@@ -729,135 +694,6 @@ subroutine inv_sig_h(sig,pp,qq,cos3t,I1,I2,I3)
     return
 endsubroutine
 
-! matrix multiplication
-subroutine matmul_h(a, b, c, l, m, n)
-    implicit none
-    integer::i, j, k, l, m, n
-    real(8)::a(l,m),b(m,n),c(l,n)
-    do i = 1, l
-        do j = 1, n
-            do k = 1, m
-                c(i,j) = c(i,j) + a(i,k) * b(k,j)
-            enddo
-        enddo
-    enddo
-    return
-endsubroutine
-
-! move internal variables in vector qq_n
-! changes intergranular strain rom continuum to soil mechanics convention
-subroutine move_asv_h(asv,nasv,qq_n)
-! del has 6 components
-    implicit none
-    integer::nasv,i
-    real(8)::asv(nasv), qq_n(nasv)
-    do i = 1, nasv
-        qq_n(i) = 0.0
-    enddo
-    ! intergranular strain tensor stored in qq_n(1:6)
-    do i = 1,6
-        qq_n(i) = -asv(i)
-    enddo
-    ! void ratio stored in qq_n(7)
-    qq_n(7) = asv(7)
-    return
-endsubroutine
-
-! Move strain increment dstran into deps and computes volumetric strain increment
-subroutine move_eps_h(dstran,ntens,deps,depsv)
-! strains negative in compression
-! deps has 6 components
-    implicit none
-    integer::ntens, i
-    real(8)::deps(6), dstran(ntens), depsv
-    do i = 1, ntens
-        deps(i) = dstran(i)
-    enddo
-    depsv = deps(1) + deps(2) + deps(3)
-    return
-endsubroutine
-
-! Computes effective stress (sig) from total stress (stress) and pore pressure (pore)
-subroutine move_sig_h(stress, ntens, pore, sig)
-!   stress = total stress tensor (tension positive)
-!   pore   = exc. pore pressure (undrained conds., compression positive)
-!   sig    = effective stress (tension positive), sig has always 6 components
-    implicit none
-    integer::ntens, i
-    real(8)::sig(6), stress(ntens), pore
-    do i = 1, ntens
-        if(i <= 3) then
-            sig(i) = stress(i) + pore
-        else
-            sig(i) = stress(i)
-        endif
-    enddo
-    return
-endsubroutine
-
-! evaluate norm of residual vector Res=||y_hat-y_til||
-subroutine norm_res_h(y_til,y_hat,ny,nasv,norm_R)
-    implicit none
-    integer ny,nasv,ng,k,i,testnan
-    real(8)::y_til(ny),y_hat(ny),void_til,void_hat,del_void
-    real(8)::err(ny),norm_R2,norm_R
-    real(8)::norm_sig2,norm_q2,norm_sig,norm_q
-    real(8)::sig_hat(6),sig_til(6),del_sig(6)
-    real(8)::q_hat(nasv),q_til(nasv),del_q(nasv)
-    real(8)::dot_vect_h
-    
-    ng = 6 * nasv
-    k = 42 + nasv
-    do i = 1, ny
-        err(i) = 0.0
-    enddo
-    ! recover stress tensor and internal variables
-    do i=1,6
-        sig_hat(i)=y_hat(i)
-        sig_til(i)=y_til(i)
-        del_sig(i)=dabs(sig_hat(i)-sig_til(i))
-    enddo
-    do i=1,nasv-1
-        q_hat(i)=y_hat(6+i)
-        q_til(i)=y_til(6+i)
-        del_q(i)=dabs(q_hat(i)-q_til(i))
-    enddo
-
-    void_hat=y_hat(6+nasv)
-    void_til=y_til(6+nasv)
-    del_void=dabs(void_hat-void_til)
-
-    ! relative error norms
-    norm_sig2=dot_vect_h(1,sig_hat,sig_hat,6)
-    norm_q2=dot_vect_h(2,q_hat,q_hat,6)
-    norm_sig=dsqrt(norm_sig2)
-    norm_q=dsqrt(norm_q2)
-    if(norm_sig>0.0) then
-        do i=1,6
-                err(i)=del_sig(i)/norm_sig
-        enddo
-    endif
-    if(norm_q>0.0) then
-        do i=1,nasv-1
-            err(6+i)=del_q(i)/norm_q
-        enddo
-    endif
-    err(6+nasv)=del_void/void_hat
-
-    ! global relative error norm
-    norm_R2=dot_vect_h(3,err,err,ny)
-    norm_R=dsqrt(norm_R2)
-    testnan = 0
-    call umatisnan_h(norm_sig,testnan)
-    call umatisnan_h(norm_q,testnan)
-    call umatisnan_h(void_hat,testnan)
-    if(testnan == 1) then
-        norm_R = 1.0d20
-endif
-
-return
-end
-
 ! calculate consistent tengential stiffness matrix
 subroutine perturbate_h(y_n,y_np1,n,nasv,dtsub,err_tol,maxnint, DTmin, &
     deps_np1,parms,nparms,nfev,elprsw,theta,ntens,DD,dtime, error)
@@ -874,7 +710,7 @@ subroutine perturbate_h(y_n,y_np1,n,nasv,dtsub,err_tol,maxnint, DTmin, &
     real(8)::LL(6,6), NN(6)
           
     ! initialize DD and y_star
-    if(parms(10) <= 0.5) then
+    if (parms(10) <= 0.5) then
         istrain = 0 
     else 
         istrain = 1
@@ -900,47 +736,36 @@ subroutine perturbate_h(y_n,y_np1,n,nasv,dtsub,err_tol,maxnint, DTmin, &
         call get_tan_h(deps_np1, sig, q, nasv, parms, nparms, &
                     DD, HHtmp, LL, NN, istrain, error)                
     endif
-      
+    
     if (istrain == 0) then
         do kk = 1, 6
             do jj = 1, 6
-                DD(kk,jj) = LL(kk,jj)
+                DD(kk, jj) = LL(kk, jj)
             enddo
-    enddo
+        enddo
     else
         do kk=1,6
             do jj=1,6
-                DD(kk,jj) = parms(10) * LL(kk,jj)
+                DD(kk, jj) = parms(10) * LL(kk, jj)
             enddo
         enddo
     endif
+    
     return
 endsubroutine  
-        
-! store vector a to vector b
-subroutine push_h(a,b,n)
-    implicit none
-    integer::i,n
-    real(8)::a(n),b(n)
-    do i = 1, n
-        b(i) = a(i)
-    enddo
-    return
-endsubroutine
 
 ! calculate coefficient kRK from current state y and strain increment deps
-! Masin hypoplastic model for clays with intergranular strains
+! after Masin's hypoplastic model for clays with intergranular strains
 subroutine rhs_h(y, ny, nasv, parms, nparms, deps, kRK, nfev, error)
     implicit none
-
     integer error,ny,nparms,nasv,i,nfev
     real(8)::y(ny),kRK(ny),parms(nparms),deps(6)
     real(8)::sig(6),q(nasv)
     real(8)::F_sig(6),F_q(nasv)
     
-    ! update counter for the number of function f(y) evaluations
+    ! update counter for the number of f(y) evaluations
     nfev = nfev + 1
-
+    
     ! initialize kRK
     do i = 1, ny
         kRK(i) = 0.0
@@ -952,32 +777,32 @@ subroutine rhs_h(y, ny, nasv, parms, nparms, deps, kRK, nfev, error)
     enddo
 
     do i = 1, nasv
-        q(i) = y(6+i)
+        q(i) = y(6 + i)
     enddo
       
-    ! build F_sig(6) and F_q(nasv) vectors and move them into kRK
-    call get_F_sig_q_h(sig,q,nasv,parms,nparms,deps,F_sig,F_q,error)
+    ! build F_sig(6) and F_q(nasv) vectors
+    call get_F_sig_q_h(sig, q, nasv, parms, nparms, deps, F_sig, F_q, error)
       
     if(error == 10) return
 
     do i = 1, 6
         kRK(i) = F_sig(i)
     enddo 
-      
+    write(*, *) kRK(1), kRK(2), kRK(3), kRK(4), kRK(5), kRK(6)
+    
     do i = 1, nasv
-        kRK(6+i) = F_q(i)
+        kRK(6 + i) = F_q(i)
     enddo                   
 
     return
 endsubroutine
 
-! numerical solution of y'=f(y)
-! explicit, adapive RKF23 scheme with local time step extrapolation
+! numerical solution of y'=f(y) using self-apdative explicit RKF23 scheme
 subroutine rkf23_update_h(y, n, nasv, dtsub, err_tol, maxnint, DTmin, &
     deps_np1, parms, nparms, nfev, elprsw, dtime, error)
     implicit none
     logical elprsw
-    integer n,nasv,nparms,i,ksubst,kreject,nfev
+    integer n,nasv,nparms,i,ksubst,nfev
     integer maxnint,error,error_RKF
     real(8)::y(n), parms(nparms), dtsub, err_tol, DTmin
     real(8)::deps_np1(6),y_k(n),y_2(n),y_3(n),y_til(n)
@@ -985,65 +810,59 @@ subroutine rkf23_update_h(y, n, nasv, dtsub, err_tol, maxnint, DTmin, &
     real(8)::T_k,DT_k,dtime
     real(8)::kRK_1(n),kRK_2(n),kRK_3(n)
     real(8)::norm_R,S_hull, temp
-
-! start of update process
+    
     error_RKF = 0
     T_k = 0.0      
     DT_k = dtsub / dtime
     ksubst = 0
-    kreject = 0
     nfev = 0
     do i = 1, n
         y_k(i) = y(i)
     enddo
         
     ! start substepping 
-    do while (T_k < 1.0) 
-      
+    do while (T_k < (1.0 - 1.0d-3)) 
         ksubst = ksubst + 1
-
-        ! check for maximum number of substeps
-        if (ksubst > maxnint) then
-            write(6,*) 'number of substeps ', ksubst, ' is too big, step rejected'
-            error = 3
+        if (ksubst > maxnint) then ! too many substep required
+            error = 11
             return
         endif          
         
-        ! build RK functions
+        write(*, *) 'y_k: ', y_k(1), y_k(2), y_k(3), y_k(4), y_k(5), y_k(6)
         call check_RKF_h(error_RKF,y_k,n,nasv,parms,nparms)
         if (error_RKF == 1) then 
             error = 3
             return
         endif
-        
         call rhs_h(y_k,n,nasv,parms,nparms,deps_np1,kRK_1, nfev, error)
         if (error == 10) return
         
-        ! find y_2
+        ! cal y_2
         temp = 0.5 * DT_k
         do i = 1, n
             y_2(i) = y_k(i) + temp * kRK_1(i)
         enddo
+        write(*, *) 'y_2', y_2(1), y_2(2), y_2(3), y_2(4), y_2(5), y_2(6)
         
         call check_RKF_h(error_RKF, y_2, n, nasv, parms, nparms)
         if (error_RKF == 1) then 
-            error=3
+            error = 3
             return
         endif
-        
         call rhs_h(y_2,n,nasv,parms,nparms,deps_np1,kRK_2, nfev,error)
         if(error == 10) return
                                      
-        ! find y_3
+        ! cal y_3
         do i = 1, n
             y_3(i) = y_k(i) - DT_k * kRK_1(i) + 2.0 * DT_k * kRK_2(i)
         enddo
+        write(*, *) 'y_3', y_3(1), y_3(2), y_3(3), y_3(4), y_3(5), y_3(6)
+
         call check_RKF_h(error_RKF, y_3, n, nasv, parms, nparms)
         if (error_RKF == 1) then 
             error=3
             return
         endif
-        
         call rhs_h(y_3, n, nasv, parms,nparms,deps_np1,kRK_3, nfev,error)
         if (error==10) return
                       
@@ -1059,7 +878,7 @@ subroutine rkf23_update_h(y, n, nasv, dtsub, err_tol, maxnint, DTmin, &
         call check_RKF_h(error_RKF,y_hat,n,nasv,parms,nparms)
 
         if (error_RKF /= 0) then
-            error=3
+            error = 3
 	        return
         endif
 
@@ -1071,7 +890,7 @@ subroutine rkf23_update_h(y, n, nasv, dtsub, err_tol, maxnint, DTmin, &
         endif
 
         if (norm_R < err_tol) then ! substep accepted                    
-        ! update y_k and T_k and estimate new substep size DT_k
+            ! update y_k and T_k and estimate new substep size DT_k
             do i = 1, n        
                 y_k(i) = y_hat(i)
             enddo
@@ -1082,9 +901,8 @@ subroutine rkf23_update_h(y, n, nasv, dtsub, err_tol, maxnint, DTmin, &
         else ! substep not accepted, recompute with smaller substep
             DT_k = max(DT_k / 4.0, S_hull)
             ! check for minimum step size
-            if (DT_k < DTmin) then
-                write(6,*) 'substep size ', DT_k, ' is too small, step rejected'
-                error = 3
+            if (DT_k < DTmin) then ! substep too small
+                error = 12
                 return
             endif
         endif
@@ -1106,47 +924,38 @@ subroutine check_RKF_h(error_RKF, y, ny, nasv, parms, nparms)
     real(8)::xN1(3),xN2(3),xN3(3),S(3),P,Q,tmin, p_t
     real(8), parameter::minstress = 0.9
     
+    ! mean stress
     p_t = parms(2)
-    do i=1,6
-        sig(i)=y(i)
+    do i = 1, 6
+        sig(i) = y(i)
     enddo
     sig_star(1) = sig(1) - p_t
     sig_star(2) = sig(2) - p_t
     sig_star(3) = sig(3) - p_t
     sig_star(4) = sig(4)
     sig_star(5) = sig(5)
-    sig_star(6) = sig(6)       
-    pmean = -(sig_star(1) + sig_star(2) + sig_star(3)) / 3.0
-    	
-    ! check for positive mean stress
-    if(pmean <= minstress) then
+    sig_star(6) = sig(6)
+    write (*, *) 's11-s33: ', y(1), y(2), y(3)
+    write (*, *) 's12-s31: ', y(4), y(5), y(6)
+    pmean = -(sig_star(1) + sig_star(2) + sig_star(3)) / 3.0    
+    if (pmean <= minstress) then ! tension
         error_RKF = 1
     endif
 
-    ! calculate minimum principal stress
+    ! get minimum principal stress
     iopt = 0
-    Call PrnSig_h(iopt, sig_star, xN1, xN2, xN3, S(1),S(2),S(3), P, Q)
-    tmin = 1.0d+20
-    do i = 1, 3
-        if (tmin >= -S(i)) then
-            tmin = -S(i)
-        endif	 
-    enddo 
-
-    ! check for tension
-    if(tmin <= minstress) then
+    call PrnSig_h(iopt, sig_star, xN1, xN2, xN3, S(1),S(2),S(3), P, Q)
+    tmin = -S(1)
+    if (tmin >= -S(2)) tmin = -S(2)
+    if (tmin >= -S(3)) tmin = -S(3)
+    if (tmin <= minstress) then ! tension
         error_RKF = 1
     endif
-
-    ! check for NAN
-    testnan = 0
-    do i = 1, ny
-        call umatisnan_h(y(i), testnan)
-    enddo
-
-    if(testnan == 1) error_RKF = 1
+    
     return
 endsubroutine
+
+! ========================== Result formatting =======================
 
 ! copy the vector of state variables to umat output
 subroutine solout_h(stress, ntens, asv, nasv, ddsdde, y, &
@@ -1261,19 +1070,118 @@ subroutine calc_statev_h(stress, statev, parms, nparms, nasv, nasvdim, deps)
     endif
 
     return
-endsubroutine       
+endsubroutine
 
-! checks whether number is NaN
-subroutine umatisnan_h(chcknum, testnan)
-    real(8)::chcknum
-    integer::testnan
-    if (.not.(chcknum >= 0. .OR. chcknum < 0.)) testnan = 1        
-    if (chcknum > 1.d30) testnan = 1        
-    if (chcknum < -1.d30) testnan = 1        
-    if (chcknum /= chcknum) testnan = 1
+! ========================== Utilities =======================
+! copy asv to qq_n
+! changes intergranular strain from continuum to soil mechanics convention
+subroutine move_asv_h(asv, nasv, qq_n)
+! del has 6 components
+    implicit none
+    integer::nasv,i
+    real(8)::asv(nasv), qq_n(nasv)
+    do i = 1, nasv
+        qq_n(i) = 0.0
+    enddo
+    ! intergranular strain tensor stored in qq_n(1:6)
+    do i = 1, 6
+        qq_n(i) = -asv(i)
+    enddo
+    ! void ratio stored in qq_n(7)
+    qq_n(7) = asv(7)
     return
-endsubroutine      
-      
+endsubroutine
+
+! copy strain increment dstran into deps and computes volumetric strain increment
+subroutine move_eps_h(dstran, ntens, deps, depsv)
+! strains negative in compression
+! deps has 6 components
+    implicit none
+    integer::ntens, i
+    real(8)::deps(6), dstran(ntens), depsv
+    do i = 1, ntens
+        deps(i) = dstran(i)
+    enddo
+    depsv = deps(1) + deps(2) + deps(3)
+    return
+endsubroutine
+
+! computes effective stress (sig) from total stress (stress) and pore pressure (pore)
+subroutine move_sig_h(stress, ntens, pore, sig)
+!   stress = total stress tensor (tension positive)
+!   pore   = exc. pore pressure (undrained conds., compression positive)
+!   sig    = effective stress (tension positive), sig has always 6 components
+    implicit none
+    integer::ntens, i
+    real(8)::sig(6), stress(ntens), pore
+    do i = 1, ntens
+        if(i <= 3) then
+            sig(i) = stress(i) + pore
+        else
+            sig(i) = stress(i)
+        endif
+    enddo
+    return
+endsubroutine
+
+! evaluate norm of residual vector Res = ||y_hat - y_til||
+subroutine norm_res_h(y_til, y_hat, ny, nasv, norm_R)
+    implicit none
+    integer ny,nasv,ng,k,i,testnan
+    real(8)::y_til(ny),y_hat(ny),void_til,void_hat,del_void
+    real(8)::err(ny),norm_R2,norm_R
+    real(8)::norm_sig2,norm_q2,norm_sig,norm_q
+    real(8)::sig_hat(6),sig_til(6),del_sig(6)
+    real(8)::q_hat(nasv),q_til(nasv),del_q(nasv)
+    real(8)::dot_vect_h
+    
+    ng = 6 * nasv
+    k = 42 + nasv
+    do i = 1, ny
+        err(i) = 0.0
+    enddo
+    ! recover stress tensor and internal variables
+    do i=1,6
+        sig_hat(i)=y_hat(i)
+        sig_til(i)=y_til(i)
+        del_sig(i)=dabs(sig_hat(i)-sig_til(i))
+    enddo
+    do i=1,nasv-1
+        q_hat(i)=y_hat(6+i)
+        q_til(i)=y_til(6+i)
+        del_q(i)=dabs(q_hat(i)-q_til(i))
+    enddo
+
+    void_hat=y_hat(6+nasv)
+    void_til=y_til(6+nasv)
+    del_void=dabs(void_hat-void_til)
+
+    ! relative error norms
+    norm_sig2=dot_vect_h(1,sig_hat,sig_hat,6)
+    norm_q2=dot_vect_h(2,q_hat,q_hat,6)
+    norm_sig=dsqrt(norm_sig2)
+    norm_q=dsqrt(norm_q2)
+    if(norm_sig>0.0) then
+        do i=1,6
+                err(i)=del_sig(i)/norm_sig
+        enddo
+    endif
+    if(norm_q>0.0) then
+        do i=1,nasv-1
+            err(6+i)=del_q(i)/norm_q
+        enddo
+    endif
+    err(6+nasv)=del_void/void_hat
+
+    ! relative error norm
+    norm_R2 = dot_vect_h(3,err,err,ny)
+    norm_R = dsqrt(norm_R2)
+    return
+end
+
+! ======================== math utilities ==========================
+
+! calculate eigenvalues and eigenvectors
 subroutine PrnSig_h(IOpt,S,xN1,xN2,xN3,S1,S2,S3,P,Q)
     Implicit real(8) (A-H,O-Z)
     Dimension S(*),xN1(*),xN2(*),xN3(*)
@@ -1287,9 +1195,9 @@ endsubroutine
       
 ! get Eigenvalues/Eigenvectors for 3*3 matrix
 subroutine Eig_3_h(iOpt,St,xN1,xN2,xN3,S1,S2,S3,P,Q)
+! stress vector St(): XX, YY, ZZ, XY, YZ, ZX
     implicit real(8) (A-H,O-Z)
     Dimension St(6),A(3,3),V(3,3), xN1(3),xN2(3),xN3(3)
-! stress vector St(): XX, YY, ZZ, XY, YZ, ZX
     A(1,1) = St(1) ! xx
     A(1,2) = St(4) ! xy = yx
     A(1,3) = St(6) ! zx = xz
@@ -1419,16 +1327,12 @@ subroutine Eig_3_h(iOpt,St,xN1,xN2,xN3,S1,S2,S3,P,Q)
     return
 endsubroutine
 
-Subroutine Eig_3a_h(iOpt,St,S1,S2,S3,P,Q) ! xN1,xN2,xN3,
+! Get Eigenvalues (no Eigenvectors) for 3*3 matrix
+Subroutine Eig_3a_h(iOpt,St,S1,S2,S3,P,Q)
+! Stress vector XX, YY, ZZ, XY, YZ, ZX
     Implicit real(8) (A-H,O-Z)
-    Dimension St(6),A(3,3)   !  V(3,3),xN1(3),xN2(3),xN3(3)
-    !
-    ! Get Eigenvalues ( no Eigenvectors) for 3*3 matrix
-    ! Wim Bomhof 15/11/'01
-    !
-    ! Applied on principal stresses, directions
-    ! Stress vector XX, YY, ZZ, XY, YZ, ZX
-    !
+    Dimension St(6),A(3,3)
+    
     A(1,1) = St(1) ! xx
     A(1,2) = St(4) ! xy = yx
     A(1,3) = St(6) ! zx = xz
@@ -1526,8 +1430,7 @@ Subroutine Eig_3a_h(iOpt,St,S1,S2,S3,P,Q) ! xN1,xN2,xN3,
     return
 endsubroutine
       
-! numerical solution of y'=f(y)
-! explicit, adapive RKF23 scheme with local time step extrapolation
+! integration of linear elasticity
 subroutine calc_elasti_h(y, n, nasv, dtsub, err_tol, maxnint, DTmin, deps_np1, &
     parms, nparms, nfev, elprsw, dtime, DDtan, youngel, nuel, error)
     implicit none
@@ -1580,95 +1483,57 @@ subroutine calc_elasti_h(y, n, nasv, dtsub, err_tol, maxnint, DTmin, deps_np1, &
     return
 endsubroutine
 
-! subroutine for managing output messages
-subroutine wrista_h(mode, y, nydim, deps_np1, dtime, coords, statev, &
-            nstatv, parms, nparms, noel, npt, ndi, nshr, kstep, kinc)
-! mode:
-!   all = writes:      kstep, kinc, noel, npt
-!   2   = writes also: error message,coords(3),parms(nparms),ndi,nshr,stress(nstress)
-!                      deps(nstress),dtime,statev(nstatv)
-!   3   = writes also: stress(nstress),deps(nstress),dtime,statev(nstatv)
+! copy a(n) to b(n)
+subroutine push_h(a, b, n)
     implicit none
-    integer mode,nydim,nstatv,nparms,noel,npt,ndi,nshr,kstep,kinc,i    
-    real(8)::y(nydim),statev(nstatv),parms(nparms)
-    real(8)::deps_np1(6),coords(3),dtime
+    integer::i, n
+    real(8)::a(n), b(n)
+    do i = 1, n
+        b(i) = a(i)
+    enddo
+    return
+endsubroutine
 
-    ! writes for mode = 2
-    if (mode == 2) then
-        write(6,*) '==================================================='
-        write(6,*) 'ERROR: abaqus job failed during call of UMAT'
-        write(6,*) '==================================================='
-        write(6,*) 'state dump:'
-        write(6,*) 
+! dot product of a 2nd order tensor, stored in Voigt notation
+real(8) function dot_vect_h(flag, a, b, n)
+! flag meaning:
+!   1 -> stress in Voigt notation
+!   2 -> strain in Voigt notation
+!   3 -> ordinary dot product between R^n vectors
+    implicit none
+    integer::i, n, flag
+    real(8)::a(n), b(n), coeff
+
+    if (flag == 1) then ! stress tensor
+        coeff = 2.0
+    elseif(flag==2) then ! strain tensor
+        coeff = 0.5
+    else ! standard vectors
+        coeff = 1.0
     endif
+      
+    dot_vect_h = 0.0
+    do i = 1, n
+        if(i <= 3) then
+            dot_vect_h = dot_vect_h + a(i) * b(i)
+        else
+            dot_vect_h = dot_vect_h + coeff * a(i) * b(i)
+        endif
+    enddo
+    return
+endfunction
 
-    ! writes for all mode values
-    write(0,111) 'Step: ',kstep, 'increment: ',kinc, 'element: ', noel, 'Integration point: ',npt
-    write(0,*) 
-
-    ! writes for mode = 2
-    if (mode==2) then
-    write(6,*) 'Co-ordinates of material point:'
-    write(1,104) 'x1 = ',coords(1),' x2 = ',coords(2),' x3 = ', coords(3)
-    write(6,*) 
-    write(6,*) 'Material parameters:'
-    write(6,*) 
-    do i=1,nparms
-        write(1,105) 'prop(',i,') = ',parms(i)
-    enddo 
-    write(6,*)
-    write(1,102) 'No. of mean components:  ',ndi
-    write(1,102) 'No. of shear components: ',nshr
-    write(6,*)
-    endif
-
-    ! writes for mode = 2 or 3
-    if ((mode==2).or.(mode==3)) then
-        write(6,*) 'Stresses:'
-        write(6,*) 
-        write(1,101) 'sigma(1) = ',y(1)
-        write(1,101) 'sigma(2) = ',y(2)
-        write(1,101) 'sigma(3) = ',y(3)
-        write(1,101) 'sigma(4) = ',y(4)
-        write(1,101) 'sigma(5) = ',y(5)
-        write(1,101) 'sigma(6) = ',y(6)
-        write(6,*) 
-        write(6,*) 'Strain increment:'
-        write(6,*) 
-        write(1,101) 'deps_np1(1) = ',deps_np1(1)
-        write(1,101) 'deps_np1(2) = ',deps_np1(2)
-        write(1,101) 'deps_np1(3) = ',deps_np1(3)
-        write(1,101) 'deps_np1(4) = ',deps_np1(4)
-        write(1,101) 'deps_np1(5) = ',deps_np1(5)
-        write(1,101) 'deps_np1(6) = ',deps_np1(6)
-        write(6,*) 
-        write(6,*) 'Time increment:'
-        write(6,*) 
-        write(1,108) 'dtime = ',dtime
-        write(6,*) 
-        write(6,*) 'Internal variables:'
-        write(6,*) 
-        write(1,109) 'del(1) = ',statev(1)
-        write(1,109) 'del(2) = ',statev(2)
-        write(1,109) 'del(3) = ',statev(3)
-        write(1,109) 'del(4) = ',statev(4)
-        write(1,109) 'del(5) = ',statev(5)
-        write(1,109) 'del(6) = ',statev(6)
-        write(1,109) 'void   = ',statev(7)
-        write(6,*) 
-        write(6,*) '==================================================='
-    endif
-
-101   format(1X,a15,e11.4)
-102   format(1X,a25,i1)
-103   format(1X,a7,i5)
-104   format(1X,3(a5,f10.4,2X))
-105   format(1X,a5,i2,a4,f20.3)
-106   format(1X,3(a9,f12.4,2X))
-107   format(1X,3(a10,f12.4,2X))
-108   format(1X,a8,f12.4)
-109   format(1X,a6,f10.4)
-110   format(1X,a5,f10.4)
-111   format(1X,a6,i4,2X,a11,i4,2X,a9,i10,2X,a19,i4)   
+! matrix multiplication
+subroutine matmul_h(a, b, c, l, m, n)
+    implicit none
+    integer::i, j, k, l, m, n
+    real(8)::a(l, m),b(m, n),c(l, n)
+    do i = 1, l
+        do j = 1, n
+            do k = 1, m
+                c(i, j) = c(i, j) + a(i, k) * b(k, j)
+            enddo
+        enddo
+    enddo
     return
 endsubroutine

@@ -1,9 +1,7 @@
-#include <fstream>
+#include <iostream>
 
 #include "SandHypoplasticityByUmat.h"
 #include "Tests_main.h"
-
-size_t integrate_time0 = 0;
 
 void test_input_from_MPM()
 {
@@ -47,10 +45,9 @@ void test_input_from_MPM()
 	const double *de0 = dstrain0;
 	const double *de1 = dstrain1;
 
-	integrate_time0 = 1;
 	shp.integrate(dstrain0);
 
-	integrate_time0 = 2;
+	std::cout << "\n2nd integration\n";
 	shp.integrate(dstrain1);
 
 	size_t end_tag = 0;
