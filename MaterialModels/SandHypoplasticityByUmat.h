@@ -87,6 +87,8 @@ namespace MatModel
 			double props[16];
 		};
 
+		int status_code;
+
 	public:
 		SandHypoplasticityByUmat();
 		~SandHypoplasticityByUmat();

@@ -119,10 +119,8 @@ subroutine umat_hypoplasticity(stress,statev,ddsdde,sse,spd,scd, &
             call rkf23_update_h(y, nyact, nasv, dtsub, tolintT, maxnint, &
                 DTmin, deps_np1, parms, nparms, nfev, elprsw, dtime, error)
             if (error == 3) then ! may be close to tensile state
-                ! don't update stress and state variables
-                do i = 1, nyact        
-                    y(i) = y_n(i)
-                end do
+                inittension = 1
+                goto 10 ! tensile state
             elseif (error >= 10) then ! fatal error
                 return
             endif
@@ -131,9 +129,10 @@ subroutine umat_hypoplasticity(stress,statev,ddsdde,sse,spd,scd, &
         ! compute ddsdde
         call perturbate_h(y_n, y, nyact, nasv, dtsub, tolintT, maxnint, DTmin, &
             deps_np1, parms, nparms, nfev, elprsw, theta, ntens, DDtan, dtime, error)
+        if (error >= 10) return
     
     else ! in tensile state, elasticity
-        youngel = 100.0
+10      youngel = 100.0
         nuel = 0.48
 	    call calc_elasti_h(y, nyact, nasv, dtsub, tolintT, maxnint, DTmin, deps_np1, &
             parms, nparms, nfev, elprsw, dtime, DDtan, youngel, nuel, error)

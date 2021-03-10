@@ -1,5 +1,6 @@
 ! wrapper of umat_hypoplasticity() subroutines
-subroutine sand_hypoplasticity_integration(stress, ddsdde, statev, dstran, props)
+subroutine sand_hypoplasticity_integration(stress, &
+    ddsdde, statev, dstran, props, error)
     !DEC$ ATTRIBUTES DLLEXPORT::sand_hypoplasticity_integration  
     implicit none
 
@@ -26,6 +27,8 @@ subroutine sand_hypoplasticity_integration(stress, ddsdde, statev, dstran, props
     integer, parameter::nprops = 16
     ! props: material properties
     real(8), intent(in)::props(nprops)
+    
+    integer, intent(out)::error
     
     !cmname: user-defined material name
     character*80::cmname = 'SandHypoplasticity'
@@ -92,5 +95,8 @@ subroutine sand_hypoplasticity_integration(stress, ddsdde, statev, dstran, props
             coords, drot, pnewdt,                       &
             celent, dfgrd0, dfgrd1, noel, npt, layer,   &
             kspt, kstep, kinc)
+    
+    ! no error output
+    error = 0
     
 end subroutine sand_hypoplasticity_integration

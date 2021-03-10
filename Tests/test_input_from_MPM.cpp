@@ -19,6 +19,7 @@ void test_input_from_MPM()
 		};
 	};
 
+	const double *stress;
 	MatModel::SandHypoplasticityByUmat shp;
 	const double ini_stress[6] = { -100.0e3, -100.0e3, -100.0e3, 0.0, 0.0, 0.0 };
 	const double R = 1.0e-4;
@@ -49,6 +50,10 @@ void test_input_from_MPM()
 
 	std::cout << "\n2nd integration\n";
 	shp.integrate(dstrain1);
+	stress = shp.get_stress();
+	std::cout << "s: " << stress[0] << ", " << stress[1] << ", "
+			  << stress[2] << ", " << stress[3] << ", "
+			  << stress[4] << ", " << stress[5] << "\n";
 
 	size_t end_tag = 0;
 }

@@ -74,7 +74,7 @@ c
       parameter (nydim = 6+nasvdim)
       parameter (tolintT = 1.0d-2) 
       parameter (tolintTtest = 1.0d-1) 
-      parameter (maxnint = 1000)
+      parameter (maxnint = 10000)
       parameter (maxninttest = 1000)
       parameter (DTmin = 1.0d-17)
       parameter (perturb = 1.0d-5)
@@ -234,10 +234,10 @@ c ... Normal RKF23 integration, main integration
       if (error.eq.3) then
       
 c step size too large
-c           call wrista_h(1,y,nydim,deps_np1,dtime,
-c     &                coords,statev,nstatv,
-c     &                parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
-c           write(6, *) 'tensile state'
+           call wrista_h(1,y,nydim,deps_np1,dtime,
+     &                coords,statev,nstatv,
+     &                parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
+     
 c          keep stress the same
 c          we are likely close to tensile region
            do i=1,nyact        
@@ -1404,8 +1404,8 @@ c ... start substepping
 
 c ... check for maximum number of substeps
           if (ksubst .gt. maxnint) then
-c              write(6,*) 'number of substeps ', ksubst,
-c     &                   ' is too big, step rejected'
+              write(6,*) 'number of substeps ', ksubst,
+     &                   ' is too big, step rejected'
               error = 3
               return
           end if          
@@ -1501,8 +1501,8 @@ c ... substep is not accepted, recompute with new (smaller) substep size DT
 
 c ... check for minimum step size
           if(DT_k .lt. DTmin) then
-c              write(6,*) 'substep size ', DT_k,
-c     &                   ' is too small, step rejected'
+              write(6,*) 'substep size ', DT_k,
+     &                   ' is too small, step rejected'
               error = 3
               return
           endif          
