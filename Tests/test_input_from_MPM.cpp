@@ -36,6 +36,13 @@ void test_input_from_MPM()
 	udstrain0[4] = 0;
 	udstrain0[5] = 0;
 	
+	//dstrain0[0] = 1.209773e-8;
+	//dstrain0[1] = 1.209773e-8;
+	//dstrain0[2] = -1.36460e-7;
+	//dstrain0[3] = 4.345909e-27;
+	//dstrain0[4] = -3.034195e-8;
+	//dstrain0[5] = -3.034198e-8;
+
 	udstrain1[0] = 13697637712029187180;
 	udstrain1[1] = 13697637712029180616;
 	udstrain1[2] = 13694206740447595366;
@@ -46,7 +53,13 @@ void test_input_from_MPM()
 	const double *de0 = dstrain0;
 	const double *de1 = dstrain1;
 
+	//std::cout << dstrain0[0] << ", " << dstrain0[1] << ", "
+	//		<< dstrain0[2] << ", " << dstrain0[3] << ", "
+	//		<< dstrain0[4] << ", " << dstrain0[5] << "\n";
 	shp.integrate(dstrain0);
+	//std::cout << dstrain0[0] << ", " << dstrain0[1] << ", "
+	//		<< dstrain0[2] << ", " << dstrain0[3] << ", "
+	//		<< dstrain0[4] << ", " << dstrain0[5] << "\n";
 
 	std::cout << "\n2nd integration\n";
 	shp.integrate(dstrain1);

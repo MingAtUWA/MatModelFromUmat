@@ -1,5 +1,6 @@
 #include "MaterialModels_pcp.h"
 
+#include <iostream>
 #include <exception>
 #include <windows.h>
 
@@ -139,7 +140,6 @@ namespace MatModel
 		}
 		// void ratio
 		e = _e; // 6
-		// e = 0.0;
 		// pore pressure
 		negative_pore_pressure = -_pore_pressure; // 7
 
@@ -198,6 +198,7 @@ namespace MatModel
 			dstrain,
 			self.props,
 			&self.status_code);
+
 		// link statically
 		//SAND_HYPOPLASTICITY_INTEGRATION(
 		//	stress_umat,
@@ -235,6 +236,11 @@ namespace MatModel
 		for (size_t i = 0; i < 6; ++i)
 			for (size_t j = 3; j < 6; ++j)
 				self.Dep_mat[i][j] *= 2.0; // ????
+
+		swap(dstrain[4], dstrain[5]);
+		dstrain[3] *= 0.5;
+		dstrain[4] *= 0.5;
+		dstrain[5] *= 0.5;
 
 		return 0;
 	}

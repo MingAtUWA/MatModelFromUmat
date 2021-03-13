@@ -29,9 +29,9 @@ int MaterialModelInitializer::init()
 
 	is_init = true;
 	SandHypoplasticityByUmat::init(
-		"../SandHypoplasticity/Debug/SandHypoplasticity.dll");
+		"SandHypoplasticity.dll");
 	SandHypoplasticityCavitationByUmat::init(
-		"../SandHypoplasticityCavitation/Debug/SandHypoplasticityCavitation.dll");
+		"SandHypoplasticityCavitation.dll");
 	return 0;
 }
 

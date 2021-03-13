@@ -67,14 +67,14 @@ c
       double precision sig_n(6),sig_np1(6),DDtan(6,6),pore
       double precision deps_np1(6),depsv_np1,norm_deps,tolintTtest
       double precision norm_deps2,pp,qq,cos3t,I1,I2,I3,norm_D2,norm_D
-      double precision ameanstress,avoid,youngel,tdepel0,tdepel1,nuel
+      double precision youngel,tdepel0,tdepel1,nuel
       double precision Eyoung0,Eyoung1,nu0,nu1
 
       parameter (nasvdim = 15)
       parameter (nydim = 6+nasvdim)
-      parameter (tolintT = 1.0d-2) 
+      parameter (tolintT = 1.0d-1) 
       parameter (tolintTtest = 1.0d-1) 
-      parameter (maxnint = 1000)
+      parameter (maxnint = 200)
       parameter (maxninttest = 1000)
       parameter (DTmin = 1.0d-17)
       parameter (perturb = 1.0d-5)
@@ -87,10 +87,6 @@ c ... additional state variables
 c ... solution vector (stresses, additional state variables)
       double precision y(nydim),y_n(nydim),dy(nydim)
 
-	integer intv(10)
-      double precision realv(10)
-      character*8 charv(10)
-
 c ... Error Management:
 c     error =  0 ... no problem in time integration
 c     error =  1 ... problems in evaluation of the time rate, (e.g. undefined 
@@ -98,35 +94,16 @@ c                    stress state), reduce time integration substeps
 c     error =  3 ... problems in time integration, reduce abaqus load increment 
 c                    (cut-back)
 c     error = 10 ... severe error, terminate calculation
-      error=0
-
-c ... check problem dimensions    
-      !if (ndi.ne.3) then
-      !    write(6,*) 'ERROR: this UMAT can be used only for elm.'
-      !    write(6,*) 'with 3 direct stress/strain components'
-      !    write(6,*) 'noel = ',noel
-      !    error = 10
-      !endif
-
+      error = 0
+      
 c ... check material parameters and move them to array parms(nparms)
       call check_parms_h(props,nprops,parms,nparms,error)
 
-c ... print informations about time integration, useful when problems occur
-c ... for debug purpose
-      elprsw = .false.
-!      if (prsw) then
-!c ... print only in some defined elements
-!          if ((noel.eq.101) .and. (npt.eq.1))
-!              elprsw = .false.
-!      endif
+      elprsw = .false. ! not used
 
 c ... define number of additional state variables
       nasv = 7
       nyact = 6 + nasv
-      !if (nyact .gt. nydim) then
-      !    write(6,*) 'ERROR: nasvdim too small in UMAT'
-      !    error = 10
-      !endif
 
 c ... suggested time substep size, and initial excess pore pressure
       dtsub = statev(13)
@@ -134,9 +111,7 @@ c ... suggested time substep size, and initial excess pore pressure
       
 c ... init void ratio
       if (statev(7) .lt. 0.001) then
-          ameanstress = -(stress(1) + stress(2) + stress(3)) / 3
-          avoid = props(16)
-          statev(7) = avoid
+          statev(7) = props(16)
       endif
 
 c ... additional state variables
@@ -146,40 +121,22 @@ c ... additional state variables
 
 c ... compute volume strain increment and effective stress
       do i=1,6        
-          sig_n(i)=0
-          deps_np1(i)=0
+          sig_n(i) = 0.0
+          deps_np1(i) = 0.0
       enddo
-      call move_sig_h(stress,ntens,pore,sig_n)
-      call move_eps_h(dstran,ntens,deps_np1,depsv_np1)
+      call move_sig_h(stress, ntens, pore, sig_n)
+      call move_eps_h(dstran, ntens, deps_np1, depsv_np1)
 
       norm_D2 = dot_vect_h(2, deps_np1, deps_np1, 6)
       norm_D = sqrt(norm_D2)
-c ... check whether the strain rate from the ABAQUS is not NAN	  
-      testnan = 0
-      call umatisnan_h(norm_D,testnan)
-      if (testnan .eq. 1) then 
-	     call wrista_h(3,y,nydim,deps_np1,dtime,coords,statev,nstatv,
-     &              parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
-	     write(6,*) 'Error in integration, noel ',noel
-	     write(6,*) 'Try to decrease the global step size'
-	     call xit_h
-      end if
 
 c ... Time integration
-      call iniy_h(y,nydim,nasv,ntens,sig_n,asv)
-      call push_h(y,y_n,nydim)
+      call iniy_h(y, nydim, nasv, ntens, sig_n, asv)
+      call push_h(y, y_n, nydim)
 
 c ... check whether the initial state is not tensile
       inittension = 0
-      call check_RKF_h(inittension,y,nyact,nasv,parms,nparms)
-
-      ! if (elprsw) then
-      !   write(6,*) '==================================================='
-      !   write(6,*) 'Call of umat:'
-      !   write(6,*) '==================================================='
-      !   call wrista_h(3,y,nydim,deps_np1,dtime,coords,statev,nstatv,
-      !&              parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
-      ! endif
+      call check_RKF_h(inittension, y, nyact, nasv, parms, nparms)
 
 c ... Switch for elasticity in the case tensile stress is reached
       youngel = 1.0
@@ -189,79 +146,48 @@ c ... local integration using adaptive RKF23 method, consistent Jacobian and err
           dtsub = dtime
       endif
 
-c     if testing==1 PLAXIS is testing for the initial strain increment.
-      testing=0
-c     For use in ABAQUS, comment out the following line
-      !if (kstep.eq.1 .AND. kinc.eq.1) testing=1
-      if (norm_D.eq.0) testing=2
-c     FEM asking for ddsdde only
+      testing = 0
+c for ddsdde only
+      if (norm_D .eq. 0.0) testing = 2
 
       nfev = 0 ! initialisation
 
       if (inittension.eq.0) then
-      
-      if (testing .eq. 1) then
-      
-          call rkf23_update_h(y,nyact,nasv,dtsub,tolintTtest,
-     &                      maxninttest,DTmin,
-     &                      deps_np1,parms,nparms,nfev,elprsw,
-     &                      dtime,error)
-     
-c ... give original state if the model fails without substepping
-          if(error .eq. 3) then
-            do i=1,nyact        
-               y(i)=y_n(i)
-            end do
-            error = 0
-          end if
-          
-      else if(testing .eq. 2) then
-      
+                
+          if(testing .eq. 2) then
 c no need to update stress, for ddsdde only
-            do i=1,nyact        
+              do i=1,nyact        
                   y(i)=y_n(i)
-            end do
-      
-      else   ! testing == 0
+              end do
+          else   ! testing == 0
 c ... Normal RKF23 integration, main integration
-          call rkf23_update_h(y,nyact,nasv,dtsub,tolintT,
-     &                        maxnint,DTmin,
-     &                        deps_np1,parms,nparms,nfev,
-     &                        elprsw,dtime,error)
-      
-      endif
+              call rkf23_update_h(y, nyact, nasv, dtsub, tolintT,
+     &            maxnint, DTmin, deps_np1, parms, nparms, nfev,
+     &            elprsw,dtime,error)
+          endif
 
-      if (error.eq.3) then
-      
-c step size too large
-c           call wrista_h(1,y,nydim,deps_np1,dtime,
-c     &                coords,statev,nstatv,
-c     &                parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
-c           write(6, *) 'tensile state'
-c          keep stress the same
-c          we are likely close to tensile region
-           do i=1,nyact        
-              y(i)=y_n(i)
-           end do
-
-      elseif (error.eq.10) then
-
-           call wrista_h(2,y,nydim,deps_np1,dtime,
+          if (error .eq. 3) then
+c keep stress the same, we are likely close to tensile region
+              do i=1,nyact        
+                  y(i)=y_n(i)
+              enddo
+c             write(6, *) 'tensile state'
+          elseif (error.eq.10) then
+              call wrista_h(2,y,nydim,deps_np1,dtime,
      &                coords,statev,nstatv,
      &                parms,nparms,noel,npt,ndi,nshr,kstep,kinc)
-           call xit_h
-      
-      endif ! end error
+              call xit_h
+          endif ! end error
 
 c ... compute ddsdde
-      call perturbate_h(y_n,y,nyact,nasv,dtsub,tolintT,maxnint,DTmin,
-     &      deps_np1,parms,nparms,nfev,elprsw,theta,ntens,DDtan,
-     &      dtime,error)
+          call perturbate_h(y_n, y, nyact, nasv, dtsub, tolintT, 
+     &        maxnint, DTmin, deps_np1, parms, nparms, nfev, elprsw,
+     &        theta, ntens, DDtan, dtime, error)
 
-      else ! inittension != 0
-c     we were initially in the tensile stress, calc elastic
-	    youngel = 100.0
-	    nuel = 0.48
+      else ! inittension == 1
+c     in tensile state, calc elastic
+	    youngel = 1000.0
+	    nuel = 0.3
 	    call calc_elasti_h(y,nyact,nasv,dtsub,tolintT,
      &                       maxnint,DTmin,
      &                       deps_np1,parms,nparms,nfev,elprsw,
@@ -270,9 +196,9 @@ c     we were initially in the tensile stress, calc elastic
       endif ! end inittension
 
 c ... update dtsub and nfev
-      if(dtsub .le. 0.0d0) then 
+      if (dtsub .le. 0.0d0) then 
       	dtsub = 0.0d0
-      else if(dtsub .ge. dtime) then 
+      else if (dtsub .ge. dtime) then 
       	dtsub = dtime
       endif
       statev(13) = dtsub
@@ -280,27 +206,27 @@ c ... update dtsub and nfev
       
 c ... convert solution (stress + cons. tangent) to abaqus format
 c     update pore pressure and compute total stresses 
-      call solout_h(stress,ntens,asv,nasv,ddsdde,
-     +              y,nydim,pore,depsv_np1,parms,nparms,DDtan)
+      call solout_h(stress, ntens, asv, nasv, ddsdde, y, nydim, pore,
+     &            depsv_np1, parms, nparms, DDtan)
       
 c ... updated vector of additional state variables to abaqus statev vector
-      do i=1,nasv
-          statev(i-1+nfasv) = asv(i) 
+      do i = 1, nasv
+          statev(i - 1 + nfasv) = asv(i) 
       end do
       
 c ... transfer additional information to statev vector
-      do i=1,6
+      do i = 1, 6
            sig_np1(i) = y(i)
       end do
-      pp = -(sig_np1(1)+sig_np1(2)+sig_np1(3))/3
-
+      pp = -(sig_np1(1) + sig_np1(2) + sig_np1(3))/3.0
+      
       statev(8) = -pore 
       statev(9) = pp
 
 c ... update statev variables
-      if(inittension .eq. 0) then
-          call calc_statev_h(sig_np1,statev,parms,nparms,nasv,
-     &                       nasvdim,deps_np1)
+      if (inittension .eq. 0) then
+          call calc_statev_h(sig_np1, statev, parms, nparms, nasv,
+     &                       nasvdim, deps_np1)
       end if
 
 c ... complete time integration
@@ -469,33 +395,32 @@ c-----------------------------------------------------------------------------
       integer istrain,error
 
 c ... compute tangent operators
-      if(parms(10) .le. 0.5) then
+      if (parms(10) .le. 0.5) then
           istrain=0 
       else 
           istrain=1
       endif
 
-      call get_tan_h(deps,sig,q,nasv,parms,nparms,MM,
-     .               HH,LL,NN,istrain,error)
+      call get_tan_h(deps, sig, q, nasv, parms, nparms, MM, HH, LL, NN,
+     &            istrain, error)
 
 c ... compute F_sig=MM*deps
-c
-		if (istrain .eq. 1) then
-        		call matmul_h(MM,deps,F_sig,6,6,1)
-        else 
-        		call matmul_h(LL,deps,F_sig,6,6,1)
-		        norm_D2=dot_vect_h(2,deps,deps,6)
-		        norm_D=sqrt(norm_D2)
-                do ii=1,6
-                     F_sig(ii)=F_sig(ii)+NN(ii)*norm_D
-                end do
-        endif
+      if (istrain .eq. 1) then
+          call matmul_h(MM, deps, F_sig, 6, 6, 1)
+      else 
+          call matmul_h(LL, deps, F_sig, 6, 6, 1)
+          norm_D2 = dot_vect_h(2, deps, deps, 6)
+          norm_D = sqrt(norm_D2)
+          do ii = 1, 6
+              F_sig(ii) = F_sig(ii) + NN(ii) * norm_D
+          enddo
+      endif
 
 c ... compute F_q=HH*deps
-        call matmul_h(HH,deps,F_q,nasv,6,1)
-        
-        return
-        end
+      call matmul_h(HH, deps, F_q, nasv, 6, 1)
+      
+      return
+      end
 
 c-----------------------------------------------------------------------------
       subroutine get_tan_h(deps,sig,q,nasv,parms,nparms,MM,HH,
@@ -607,9 +532,9 @@ c ... recover internal state variables
       void=q(7)
 
 c ... axis translation due to cohesion (p_t>0)
-      sig_star(1) = sig(1)-p_t
-      sig_star(2) = sig(2)-p_t
-      sig_star(3) = sig(3)-p_t
+      sig_star(1) = sig(1) - p_t
+      sig_star(2) = sig(2) - p_t
+      sig_star(3) = sig(3) - p_t
       sig_star(4) = sig(4)
       sig_star(5) = sig(5)
       sig_star(6) = sig(6)
@@ -621,7 +546,7 @@ c ... strain increment and intergranular strain directions
       norm_del = dsqrt(norm_del2)
 
       if (norm_del .ge. tiny) then
-          do i=1,6
+          do i = 1, 6
               eta_del(i) = del(i) / norm_del
           enddo
       endif
@@ -633,7 +558,7 @@ c ... strain increment and intergranular strain directions
       eta_delta(5) = half*eta_del(5)
       eta_delta(6) = half*eta_del(6)
 
-      if(norm_deps.ge.tiny) then
+      if(norm_deps .ge. tiny) then
           do i = 1, 6
               eta_eps(i) = deps(i) / norm_deps
           enddo
@@ -657,13 +582,13 @@ c     T_cap_dot
       eta_dev(6) = eta(6)
 
 c ... functions a and F
-      eta_dn2 = dot_vect_h(1,eta_dev,eta_dev,6)
+      eta_dn2 = dot_vect_h(1, eta_dev, eta_dev, 6)
       tanpsi = sqrt3 * dsqrt(eta_dn2)
-      temp1 = oneeight*tanpsi*tanpsi+
-     &    (two-tanpsi*tanpsi)/(two+sqrt2*tanpsi*cos3t)
+      temp1 = oneeight * tanpsi * tanpsi +
+     &    (two - tanpsi * tanpsi) / (two + sqrt2 * tanpsi * cos3t)
       temp2 = tanpsi / twosqrt2
 
-      a = sqrt3 * (three-sin(phi)) / (twosqrt2*sin(phi))
+      a = sqrt3 * (three - sin(phi)) / (twosqrt2 * sin(phi))
       a2 = a * a
       FF = dsqrt(temp1) - temp2
 
@@ -677,11 +602,9 @@ c     fb
       temp1 = three + a*a - a * sq3 * ((ei0-ed0)/(ec0-ed0))**alpha
       if(temp1 .lt. zero) stop 'factor fb not defined'
       fb = hs/en/temp1*(one+ei)/ei*(ei0/ec0)**beta*(-I1/hs)**(one-en)
-      !fb = hs/en/temp1*(one+ei)/ei*(-I1/hs)**(one-en)
       
 c     fe
       fe = (ec/void)**beta
-      !fe = (ei/void)**beta
       
       fs=fb*fe
 
@@ -696,33 +619,33 @@ c ... tensor L
       eta_n2 = dot_vect_h(1,eta,eta,6)
       do i = 1,6
           do j = 1, 6
-              LL(i,j) = (II(i,j)*FF*FF + a2*eta(i)*eta(j)) / eta_n2
+              LL(i, j) = (II(i, j) * FF * FF + a2 * eta(i) * eta(j)) 
+     &                / eta_n2
           enddo
       enddo
 
 c ... tensor NN
       do i = 1, 6
-         NN(i) = FF * a * (eta(i)+eta_dev(i)) / eta_n2
+         NN(i) = FF * a * (eta(i) + eta_dev(i)) / eta_n2
       enddo
       
 c ... BEGIN intergranular STRAIN
       if(istrain .eq. 1) then
 
 c ... loading function
-          load = dot_vect_h(2,eta_del,eta_eps,6)
+          load = dot_vect_h(2, eta_del, eta_eps, 6)
 c ... intergranular strain--related tensors
           rho = norm_del / r_uc
           if (rho .gt. one) then
               rho=one
           endif
 
-          call matmul_h(LL,eta_del,Leta,6,6,1)
+          call matmul_h(LL, eta_del, Leta, 6, 6, 1)
           
 c ... tangent stiffness M(sig,q,eta_eps)
           temp1=((rho**chi)*m_T+(one-rho**chi)*m_R)*fs
 
           if (load .gt. zero) then ! loading
-          
               temp2 = (rho**chi) * (one-m_T) * fs
               temp3 = (rho**chi) * fs * fd
               do i = 1, 6
@@ -732,9 +655,8 @@ c ... tangent stiffness M(sig,q,eta_eps)
                       MM(i,j) = temp1 * LL(i,j) + AA(i,j)
                   enddo
               enddo
-              
           else ! reverse loading
-              temp4 = (rho**chi)*(m_R-m_T)*fs
+              temp4 = (rho**chi) * (m_R-m_T) * fs
               do i = 1, 6
                   do j = 1, 6
                       AA(i,j) = temp4*Leta(i)*eta_delta(j)
@@ -816,7 +738,7 @@ c ... end istrain/noistrain switch
           end do
           
           NN(i) = NN(i) * fs * fd
-          
+      
       enddo        
 
       return
@@ -1245,12 +1167,12 @@ c-----------------------------------------------------------------------------
       parameter(zero=0.0d0)
       
 c ... initialize DD and y_star
-      if(parms(10) .le. 0.5) then
+      if (parms(10) .le. 0.5) then
           istrain = 0 
       else 
           istrain = 1
       end if
-
+      
       do kk = 1, 6
           do jj = 1, 6
               DD(kk, jj) = zero
@@ -1264,12 +1186,12 @@ c ... initialize DD and y_star
       do i = 1, nasv
           q(i) = y_n(6+i)
       end do
-        
+      
       call push_h(y_n,y_star,n)
 
       if (error .ne. 10) then
-          call get_tan_h(deps_np1,sig,q,nasv,parms,nparms,
-     .                   DD,HHtmp,LL,NN,istrain,error)                
+          call get_tan_h(deps_np1, sig, q, nasv, parms, nparms,
+     &                   DD, HHtmp, LL, NN, istrain, error)
       endif
       
       if (istrain .eq. 0) then
@@ -1277,15 +1199,15 @@ c ... initialize DD and y_star
               do jj = 1, 6
                   DD(kk,jj) = LL(kk,jj)
               enddo
-        enddo
+          enddo
       else
-          do kk=1,6
-              do jj=1,6
+          do kk = 1, 6
+              do jj = 1, 6
                   DD(kk,jj) = parms(10) * LL(kk,jj)
               enddo
           enddo
       endif
-
+      
       return
       end        
         
@@ -1395,7 +1317,7 @@ c ... start of update process
       nfev = 0
       do i = 1, n
           y_k(i) = y(i)
-      end do
+      enddo
         
 c ... start substepping 
       do while (T_k .lt. one) 
@@ -1408,13 +1330,14 @@ c              write(6,*) 'number of substeps ', ksubst,
 c     &                   ' is too big, step rejected'
               error = 3
               return
-          end if          
-
+          endif          
+          
 c ... build RK functions
+          !write(*, *) y_k(1), y_k(2), y_k(3), y_k(4), y_k(5), y_k(6) 
           call check_RKF_h(error_RKF,y_k,n,nasv,parms,nparms)
           
           if (error_RKF .eq. 1) then 
-              error=3
+              error = 3
               return
 		else
               call rhs_h(y_k,n,nasv,parms,nparms,deps_np1,kRK_1,
@@ -1429,10 +1352,11 @@ c ... find y_2
               y_2(i) = y_k(i) + temp * kRK_1(i)
           end do
           
+          !write(*, *) y_2(1), y_2(2), y_2(3), y_2(4), y_2(5), y_2(6) 
           call check_RKF_h(error_RKF, y_2, n, nasv, parms, nparms)
    
           if (error_RKF .eq. 1) then 
-              error=3
+              error = 3
               return
 		else
               call rhs_h(y_2,n,nasv,parms,nparms,deps_np1,kRK_2,
@@ -1446,6 +1370,7 @@ c ... find y_3
               y_3(i) = y_k(i) - DT_k * kRK_1(i) + two * DT_k * kRK_2(i)
           end do
 
+          !write(*, *) y_3(1), y_3(2), y_3(3), y_3(4), y_3(5), y_3(6) 
           call check_RKF_h(error_RKF, y_3, n, nasv, parms, nparms)
           
           if(error_RKF .eq. 1) then 
@@ -1535,8 +1460,8 @@ c Checks if RKF23 solout vector y is OK for hypoplasticity
       
 	minstress = 0.9
       p_t = parms(2)
-      do i=1,6
-          sig(i)=y(i)
+      do i = 1, 6
+          sig(i) = y(i)
       end do
 
       sig_star(1) = sig(1) - p_t
@@ -1548,7 +1473,7 @@ c Checks if RKF23 solout vector y is OK for hypoplasticity
     	pmean = -(sig_star(1) + sig_star(2) + sig_star(3)) / 3
     	
 c     check for positive mean stress
-      if(pmean .le. minstress) then
+      if (pmean .le. minstress) then
           error_RKF = 1
       end if
 
@@ -1567,23 +1492,7 @@ c     check for tension
       if(tmin .le. minstress) then
           error_RKF = 1
       end if
-      
-c      intv(1) = error_RKF
-c      call STDB_ABQERR(1, 'err_rkf(tensile)1: %I',
-c     &            intv, realv, charv)
 
-c     check for NAN
-      testnan = 0
-      do i = 1, ny
-          call umatisnan_h(y(i), testnan)
-      end do
-
-      if(testnan.eq.1) error_RKF = 1
-      
-c      intv(1) = error_RKF
-c      call STDB_ABQERR(1, 'err_rkf(tensile)2: %I',
-c     &            intv, realv, charv)
-      
       return
       end
 
