@@ -382,7 +382,8 @@ recursive Subroutine get_f_sig_q_h(sig, q, nasv, parms, nparms, deps, f_sig, f_q
 End Subroutine get_f_sig_q_h
 
 !-----------------------------------------------------------------------------
-recursive Subroutine get_tan_h(deps, sig, q, nasv, parms, nparms, mm, hh, ll, nn, istrain, error)
+recursive Subroutine get_tan_h(deps, sig, q, nasv, parms, nparms, &
+    mm, hh, ll, nn, istrain, error)
 !-----------------------------------------------------------------------------
 !  computes matrices M and H for Masin hypoplastic model for clays
 !  version with intergranular strains
